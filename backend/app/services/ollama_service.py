@@ -300,7 +300,10 @@ Response:"""
         try:
             response_text = await self.generate_completion(prompt)
             
-            # Clean and parse JSON
+            # Clean and parse JSON with better error handling
+            logger.info(f"🧹 Raw response preview: {response_text[:200]}...")
+            
+            # Remove markdown formatting
             if '```json' in response_text:
                 response_text = response_text.split('```json')[1].split('```')[0]
             elif '```' in response_text:
@@ -312,9 +315,31 @@ Response:"""
             start_idx = response_text.find('[')
             end_idx = response_text.rfind(']') + 1
             
-            if start_idx != -1 and end_idx != -1:
-                json_str = response_text[start_idx:end_idx]
+            if start_idx == -1 or end_idx == -1:
+                # Try to find JSON object instead
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                
+                if start_idx == -1 or end_idx == -1:
+                    logger.error(f"❌ No valid JSON found in response: {response_text[:500]}")
+                    raise ValueError("No valid JSON found in response")
+            
+            json_str = response_text[start_idx:end_idx]
+            logger.info(f"🔍 Extracted JSON string: {json_str[:200]}...")
+            
+            try:
                 data = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ JSON decode error: {str(e)}")
+                logger.error(f"❌ Problematic JSON: {json_str}")
+                # Try to fix common JSON issues
+                json_str = json_str.replace("'", '"')  # Replace single quotes
+                json_str = json_str.replace('\n', ' ')  # Remove newlines
+                try:
+                    data = json.loads(json_str)
+                    logger.info("✅ Fixed JSON parsing after cleanup")
+                except:
+                    raise ValueError("JSON parsing failed even after cleanup")
                 
                 if isinstance(data, dict):
                     # If single object returned, expand to multiple records

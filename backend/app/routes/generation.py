@@ -113,7 +113,7 @@ async def generate_schema_from_description(
         schema_result['sample_data'] = sample_data
         
         response = SchemaGenerationResponse(
-            schema=schema_result.get('schema', {}),
+            dataset_schema=schema_result.get('schema', {}),
             detected_domain=schema_result.get('detected_domain', request.domain),
             sample_data=sample_data,
             suggestions=schema_result.get('suggestions', [])

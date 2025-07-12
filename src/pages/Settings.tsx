@@ -10,15 +10,45 @@ import {
   Save,
   RefreshCw,
   Key,
-  Cpu
+  Cpu,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 import ModelSelector from '../components/ModelSelector';
 import { useModel } from '../components/ModelProvider';
+import { toast } from 'sonner';
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState('models');
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { currentModel } = useModel();
+
+  const handleSaveChanges = async () => {
+    setIsSaving(true);
+    try {
+      // Save settings logic here
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      toast.success('Settings saved successfully!', {
+        duration: 3000,
+        icon: <CheckCircle className="w-4 h-4" />
+      });
+    } catch (error) {
+      toast.error('Failed to save settings', {
+        duration: 3000,
+        icon: <AlertCircle className="w-4 h-4" />
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleResetDefaults = () => {
+    toast.info('Settings reset to defaults', {
+      duration: 3000,
+      icon: <RefreshCw className="w-4 h-4" />
+    });
+  };
 
   const tabs = [
     { id: 'models', label: 'AI Models', icon: Cpu },
@@ -91,13 +121,20 @@ const Settings: React.FC = () => {
           <p className="text-gray-400">Configure your DataGenesis AI platform</p>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 transition-colors flex items-center gap-2">
+          <button 
+            onClick={handleResetDefaults}
+            className="px-4 py-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 transition-colors flex items-center gap-2"
+          >
             <RefreshCw className="w-4 h-4" />
             Reset to Defaults
           </button>
-          <button className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center gap-2">
+          <button 
+            onClick={handleSaveChanges}
+            disabled={isSaving}
+            className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
             <Save className="w-4 h-4" />
-            Save Changes
+            {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </motion.div>

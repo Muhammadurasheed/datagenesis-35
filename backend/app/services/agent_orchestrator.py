@@ -264,11 +264,41 @@ class AgentOrchestrator:
             # Use the configured AI service (could be Gemini, Ollama, etc.)
             if self.ai_service.is_initialized:
                 logger.info(f"🤖 Using configured AI service: {self.ai_service.current_provider}")
-                synthetic_data = await self.ai_service.generate_synthetic_data_advanced(
-                    schema=context['schema'],
-                    config=context['config'],
-                    description=context['description']
-                )
+                
+                # Call the correct method based on the provider
+                if self.ai_service.current_provider == 'ollama':
+                    # Get the Ollama service instance
+                    from .ollama_service import OllamaService
+                    ollama_service = OllamaService(self.ai_service.endpoint or "http://localhost:11434")
+                    ollama_service.configure_model(self.ai_service.current_model, self.ai_service.endpoint)
+                    await ollama_service.initialize()
+                    
+                    synthetic_data = await ollama_service.generate_synthetic_data(
+                        schema=context['schema'],
+                        config=context['config'],
+                        description=context['description'],
+                        source_data=source_data
+                    )
+                else:
+                    # For other providers, try the advanced method or fallback to basic
+                    try:
+                        if hasattr(self.ai_service, 'generate_synthetic_data_advanced'):
+                            synthetic_data = await self.ai_service.generate_synthetic_data_advanced(
+                                schema=context['schema'],
+                                config=context['config'],
+                                description=context['description']
+                            )
+                        else:
+                            # Fallback to basic method
+                            synthetic_data = await self.ai_service.generate_synthetic_data(
+                                schema=context['schema'],
+                                config=context['config'],
+                                description=context['description'],
+                                source_data=source_data
+                            )
+                    except AttributeError:
+                        raise Exception("'AIService' object has no suitable data generation method")
+                
                 logger.info(f"✅ Generated {len(synthetic_data)} records using {self.ai_service.current_provider}")
                 return synthetic_data
         except Exception as e:

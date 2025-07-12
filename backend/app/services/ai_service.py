@@ -395,6 +395,118 @@ class AIService:
             logger.error(f"Response text: {text}")
             raise Exception("Invalid JSON response from AI model")
 
+    async def generate_synthetic_data(
+        self,
+        schema: Dict[str, Any],
+        config: Dict[str, Any],
+        description: str = "",
+        source_data: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        """Generate synthetic data using the configured AI provider"""
+        if not self.is_initialized:
+            raise Exception("AI service not configured")
+        
+        try:
+            if self.current_provider == 'gemini':
+                return await self._generate_data_gemini(schema, config, description, source_data)
+            elif self.current_provider == 'openai':
+                return await self._generate_data_openai(schema, config, description, source_data)
+            elif self.current_provider == 'anthropic':
+                return await self._generate_data_anthropic(schema, config, description, source_data)
+            elif self.current_provider == 'ollama':
+                return await self._generate_data_ollama(schema, config, description, source_data)
+            else:
+                raise Exception(f"Unsupported provider: {self.current_provider}")
+        except Exception as e:
+            logger.error(f"❌ Data generation failed with {self.current_provider}: {str(e)}")
+            # Try fallback to Gemini if available
+            if self._gemini_fallback and self.current_provider != 'gemini':
+                logger.info("🔄 Falling back to Gemini service")
+                return await self._gemini_fallback.generate_synthetic_data(schema, config, description, source_data)
+            raise Exception(f"Data generation failed: {str(e)}")
+
+    async def _generate_data_ollama(
+        self,
+        schema: Dict[str, Any],
+        config: Dict[str, Any],
+        description: str = "",
+        source_data: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        """Generate data using Ollama"""
+        from .ollama_service import OllamaService
+        ollama_service = OllamaService(self.endpoint or "http://localhost:11434")
+        ollama_service.configure_model(self.current_model, self.endpoint)
+        await ollama_service.initialize()
+        
+        return await ollama_service.generate_synthetic_data(schema, config, description, source_data)
+
+    async def _generate_data_gemini(
+        self,
+        schema: Dict[str, Any],
+        config: Dict[str, Any],
+        description: str = "",
+        source_data: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        """Generate data using Gemini"""
+        # Build comprehensive prompt for data generation
+        row_count = min(config.get('rowCount', 100), 100)
+        source_context = ""
+        if source_data and len(source_data) > 0:
+            source_context = f"\nExample data: {json.dumps(source_data[:2], indent=2)}"
+        
+        prompt = f"""Generate {row_count} rows of REALISTIC synthetic data.
+        
+Schema: {json.dumps(schema, indent=2)}
+Description: {description}{source_context}
+
+REQUIREMENTS:
+1. Generate REALISTIC data - no placeholder text
+2. Use proper domain-specific values
+3. Ensure data diversity and realistic distributions
+4. Follow schema constraints exactly
+5. Return ONLY a JSON array of {row_count} objects
+
+Return ONLY the JSON array, no additional text."""
+        
+        # Use the configured Gemini client
+        response = await asyncio.to_thread(self.client.generate_content, prompt)
+        
+        # Parse and return the response
+        return self._parse_data_response(response.text, config)
+
+    def _parse_data_response(self, text: str, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Parse and clean data generation response"""
+        try:
+            # Clean up the response
+            if '```json' in text:
+                text = text.split('```json')[1].split('```')[0]
+            elif '```' in text:
+                text = text.split('```')[1]
+            
+            text = text.strip()
+            
+            # Try to find JSON array
+            start_idx = text.find('[')
+            end_idx = text.rfind(']') + 1
+            
+            if start_idx != -1 and end_idx != -1:
+                json_str = text[start_idx:end_idx]
+                data = json.loads(json_str)
+                
+                if isinstance(data, list):
+                    return data[:config.get('rowCount', 100)]
+                else:
+                    return [data]  # Convert single object to array
+            else:
+                raise ValueError("No valid JSON array found in response")
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON parse error: {str(e)}")
+            raise Exception("Invalid JSON response from AI model")
+        except Exception as e:
+            logger.error(f"❌ Data parsing failed: {str(e)}")
+            raise Exception(f"Data response parsing failed: {str(e)}")
+
     async def generate_synthetic_data_advanced(
         self,
         schema: Dict[str, Any],
